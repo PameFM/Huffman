@@ -11,6 +11,7 @@
 #define MAX_CODE_LENGTH 256
 #define MAX_FILES 100
 #define FOLDER_NAME "books"
+#define DELIMITER "FILE_SEP"
 
 typedef struct HuffmanNode {
     unsigned char symbol;
@@ -160,8 +161,26 @@ void validateCodes(char **codes, int *frequencies) {
     }
 }
 
+void writeBits(FILE *output, unsigned char *buffer, int *bitPos, const char *code) {
+    for (int i = 0; code[i]; i++) {
+        if (code[i] == '1') {
+            *buffer |= (1 << (7 - *bitPos));
+        }
+        (*bitPos)++;
+        
+        if (*bitPos == 8) {
+            fwrite(buffer, 1, 1, output);
+            *buffer = 0;
+            *bitPos = 0;
+        }
+    }
+}
+
 void compressMultipleFiles(FILE *output, char **codes, char **filenames, int fileCount) {
     unsigned char symbol;
+    unsigned char buffer = 0;
+    int bitPos = 0;
+    
     for (int i = 0; i < fileCount; i++) {
         FILE *input = fopen(filenames[i], "rb");
         if (!input) {
@@ -169,17 +188,25 @@ void compressMultipleFiles(FILE *output, char **codes, char **filenames, int fil
             continue;
         }
 
-        fputs("FILE_SEP", output);
+        // Escribir delimitador (optimizado a nivel de bits)
+        for (int j = 0; DELIMITER[j]; j++) {
+            writeBits(output, &buffer, &bitPos, codes[DELIMITER[j]]);
+        }
 
-        while (fread(&symbol, sizeof(unsigned char), 1, input) == 1) {
+        while (fread(&symbol, 1, 1, input) == 1) {
             if (codes[symbol]) {
-                fputs(codes[symbol], output);
+                writeBits(output, &buffer, &bitPos, codes[symbol]);
             } else {
-                fprintf(stderr, "Error: Símbolo %d no tiene código (archivo: %s)\n", symbol, filenames[i]);
+                fprintf(stderr, "Error: Símbolo %d no tiene código\n", symbol);
                 exit(EXIT_FAILURE);
             }
         }
         fclose(input);
+    }
+    
+    // Escribir los bits restantes si hay
+    if (bitPos > 0) {
+        fwrite(&buffer, 1, 1, output);
     }
 }
 
@@ -269,7 +296,7 @@ int main() {
         fclose(codesFile);
     }
 
-    FILE *outputFile = fopen("textoComprimido.txt", "w");
+    FILE *outputFile = fopen("textoComprimido.bin", "wb");
     if (outputFile) {
         compressMultipleFiles(outputFile, codes, filenames, fileCount);
         fclose(outputFile);

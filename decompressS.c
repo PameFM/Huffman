@@ -47,58 +47,113 @@ HuffmanNode* rebuildTreeFromCodes(FILE *codesFile) {
     return root;
 }
 
+int readBit(FILE *input, unsigned char *buffer, int *bitPos) {
+    if (*bitPos == 0) {
+        if (fread(buffer, 1, 1, input) != 1) {
+            return EOF;
+        }
+    }
+    
+    int bit = (*buffer >> (7 - *bitPos)) & 1;
+    *bitPos = (*bitPos + 1) % 8;
+    return bit;
+}
+
 void decompressToMultipleFiles(FILE *input, HuffmanNode *root) {
     createOutputDir();
     
     HuffmanNode *current = root;
-    char buffer[4096];
-    int delim_pos = 0;
+    unsigned char buffer = 0;
+    int bitPos = 0;
     int file_count = 0;
     FILE *current_output = NULL;
     char output_path[PATH_MAX];
     
+    // Buffer para el delimitador
+    char delim_buffer[strlen(DELIMITER)];
+    int delim_index = 0;
+    
     while (1) {
-        int c = fgetc(input);
-        if (c == EOF) break;
+        int bit = readBit(input, &buffer, &bitPos);
+        if (bit == EOF) break;
         
-        // Manejo del delimitador
-        if (c == DELIMITER[delim_pos]) {
-            delim_pos++;
-            if (DELIMITER[delim_pos] == '\0') {
-                // Cerrar archivo anterior si existe
-                if (current_output) fclose(current_output);
-                
-                // Crear nuevo archivo de salida
-                snprintf(output_path, sizeof(output_path), "%s/archivo_%d.txt", OUTPUT_DIR, ++file_count);
-                current_output = fopen(output_path, "w");
-                if (!current_output) {
-                    perror("Error creando archivo de salida");
-                    break;
-                }
-                
-                delim_pos = 0;
-                current = root;
-                continue;
-            }
+        // Manejar el bit actual
+        if (bit == 0) {
+            current = current->left;
         } else {
-            // Procesar bits normales
-            if (delim_pos > 0) {
-                fseek(input, -delim_pos-1, SEEK_CUR);
-                delim_pos = 0;
-                c = fgetc(input);
+            current = current->right;
+        }
+        
+        // Si llegamos a una hoja
+        if (current && !current->left && !current->right) {
+            // Verificar si estamos en medio de la detección del delimitador
+            if (delim_index > 0) {
+                // Si el carácter no coincide con el delimitador
+                if (current->symbol != DELIMITER[delim_index]) {
+                    // Escribir los caracteres acumulados
+                    for (int i = 0; i < delim_index; i++) {
+                        if (current_output) {
+                            fputc(DELIMITER[i], current_output);
+                        }
+                    }
+                    // Escribir el carácter actual
+                    if (current_output) {
+                        fputc(current->symbol, current_output);
+                    }
+                    delim_index = 0;
+                } else {
+                    // Continuar verificando el delimitador
+                    delim_buffer[delim_index++] = current->symbol;
+                    
+                    // Si completamos el delimitador
+                    if (delim_index == strlen(DELIMITER)) {
+                        // Cerrar archivo anterior si existe
+                        if (current_output) {
+                            fclose(current_output);
+                        }
+                        
+                        // Crear nuevo archivo de salida
+                        snprintf(output_path, sizeof(output_path), "%s/archivo_%d.txt", OUTPUT_DIR, ++file_count);
+                        current_output = fopen(output_path, "w");
+                        if (!current_output) {
+                            perror("Error creando archivo de salida");
+                            break;
+                        }
+                        
+                        delim_index = 0;
+                    }
+                }
+            } else {
+                // Verificar si el carácter es el inicio del delimitador
+                if (current->symbol == DELIMITER[0]) {
+                    delim_buffer[0] = current->symbol;
+                    delim_index = 1;
+                } else {
+                    // Escribir el carácter normal
+                    if (current_output) {
+                        fputc(current->symbol, current_output);
+                    }
+                }
             }
             
-            if (c == '0') current = current->left;
-            else if (c == '1') current = current->right;
-            
-            if (current && !current->left && !current->right) {
-                if (current_output) fputc(current->symbol, current_output);
-                current = root;
-            }
+            current = root;
         }
     }
     
-    if (current_output) fclose(current_output);
+    if (current_output) {
+        fclose(current_output);
+    }
+    
+    // Si quedaron caracteres del delimitador sin procesar
+    if (delim_index > 0 && file_count > 0) {
+        current_output = fopen(output_path, "a"); // Abrir el último archivo en modo append
+        if (current_output) {
+            for (int i = 0; i < delim_index; i++) {
+                fputc(delim_buffer[i], current_output);
+            }
+            fclose(current_output);
+        }
+    }
 }
 
 void freeTree(HuffmanNode *root) {
@@ -115,9 +170,9 @@ int main() {
         return 1;
     }
     
-    FILE *compressedFile = fopen("textoComprimido.txt", "r");
+    FILE *compressedFile = fopen("textoComprimido.bin", "rb"); // Modo binario
     if (!compressedFile) {
-        perror("Error abriendo textoComprimido.txt");
+        perror("Error abriendo textoComprimido.bin");
         fclose(codesFile);
         return 1;
     }
