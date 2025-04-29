@@ -5,6 +5,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include <stdbool.h>
+#include <time.h>
 
 #define MAX_CODE_LENGTH 256
 #define DELIMITER "FILE_SEP"
@@ -89,6 +90,11 @@ int main() {
     fseek(input, 0, SEEK_END);
     long fileSize = ftell(input);
     rewind(input);
+    
+    //Tiempos
+    struct timespec inicio, fin;
+
+    clock_gettime(CLOCK_REALTIME, &inicio);
 
     unsigned char *compressedData = malloc(fileSize);
     fread(compressedData, 1, fileSize, input);
@@ -197,6 +203,21 @@ int main() {
 
     free(compressedData);
     freeHuffmanTree(tree);
+    
+    clock_gettime(CLOCK_REALTIME, &fin);
+
+    // 3. Calcular la diferencia en segundos y nanosegundos
+    long diferencia_segundos = fin.tv_sec - inicio.tv_sec;
+    long diferencia_nanosegundos = fin.tv_nsec - inicio.tv_nsec;
+
+    // 4. Convertir todo a nanosegundos (1 segundo = 1,000,000,000 ns)
+    double tiempo_total_ns = (diferencia_segundos * 1e9) + diferencia_nanosegundos;
+
+    // Mostrar resultados
+    printf("Tiempo total: %.0f nanosegundos\n", tiempo_total_ns);
+    printf("Equivale a:\n");
+    printf("- %.9f segundos\n", tiempo_total_ns / 1e9);
+    printf("- %.3f milisegundos\n", tiempo_total_ns / 1e6);
 
     return 0;
 }

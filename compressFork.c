@@ -8,6 +8,7 @@
 #include <unistd.h>
 #include <limits.h>
 #include <ctype.h>
+#include <time.h>
 
 #define MAX_TREE_NODES 256
 #define MAX_CODE_LENGTH 256
@@ -256,6 +257,12 @@ int main() {
     char path[PATH_MAX];
 
     snprintf(path, sizeof(path), "./%s", FOLDER_NAME);
+    
+    
+    //Tiempos
+    struct timespec inicio, fin;
+
+    clock_gettime(CLOCK_REALTIME, &inicio);
 
     struct stat st;
     if (stat(path, &st) != 0 || !S_ISDIR(st.st_mode)) {
@@ -347,6 +354,22 @@ int main() {
     printf("- %d archivos comprimidos\n", fileCount);
 
     for (int i = 0; i < fileCount; i++) free(filenames[i]);
+    
+    clock_gettime(CLOCK_REALTIME, &fin);
+
+    // 3. Calcular la diferencia en segundos y nanosegundos
+    long diferencia_segundos = fin.tv_sec - inicio.tv_sec;
+    long diferencia_nanosegundos = fin.tv_nsec - inicio.tv_nsec;
+
+    // 4. Convertir todo a nanosegundos (1 segundo = 1,000,000,000 ns)
+    double tiempo_total_ns = (diferencia_segundos * 1e9) + diferencia_nanosegundos;
+
+    // Mostrar resultados
+    printf("Tiempo total: %.0f nanosegundos\n", tiempo_total_ns);
+    printf("Equivale a:\n");
+    printf("- %.9f segundos\n", tiempo_total_ns / 1e9);
+    printf("- %.3f milisegundos\n", tiempo_total_ns / 1e6);
+
 
     return 0;
 }
