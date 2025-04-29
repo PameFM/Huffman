@@ -4,35 +4,33 @@
 #include <stdbool.h>
 #include <dirent.h>
 #include <sys/stat.h>
-#include <limits.h>
-#include <ctype.h> // Para isprint()
 #include <sys/wait.h>
 #include <unistd.h>
+#include <limits.h>
+#include <ctype.h>
 
 #define MAX_TREE_NODES 256
 #define MAX_CODE_LENGTH 256
 #define MAX_FILES 100
 #define FOLDER_NAME "books"
+#define DELIMITER "FILE_SEP"
 
-typedef struct HuffmanNode
-{
+typedef struct HuffmanNode {
     unsigned char symbol;
     int frequency;
     struct HuffmanNode *left;
     struct HuffmanNode *right;
 } HuffmanNode;
 
-typedef struct PriorityQueue
-{
+typedef struct PriorityQueue {
     HuffmanNode *nodes[MAX_TREE_NODES];
     int size;
 } PriorityQueue;
 
-HuffmanNode *createNode(unsigned char symbol, int frequency)
-{
+// Huffman tree functions
+HuffmanNode *createNode(unsigned char symbol, int frequency) {
     HuffmanNode *node = (HuffmanNode *)malloc(sizeof(HuffmanNode));
-    if (!node)
-    {
+    if (!node) {
         perror("Error creando nodo");
         exit(EXIT_FAILURE);
     }
@@ -42,16 +40,13 @@ HuffmanNode *createNode(unsigned char symbol, int frequency)
     return node;
 }
 
-void initPriorityQueue(PriorityQueue *pq)
-{
+void initPriorityQueue(PriorityQueue *pq) {
     pq->size = 0;
 }
 
-void enqueue(PriorityQueue *pq, HuffmanNode *node)
-{
+void enqueue(PriorityQueue *pq, HuffmanNode *node) {
     int i = pq->size;
-    while (i > 0 && pq->nodes[(i - 1) / 2]->frequency > node->frequency)
-    {
+    while (i > 0 && pq->nodes[(i - 1) / 2]->frequency > node->frequency) {
         pq->nodes[i] = pq->nodes[(i - 1) / 2];
         i = (i - 1) / 2;
     }
@@ -59,21 +54,17 @@ void enqueue(PriorityQueue *pq, HuffmanNode *node)
     pq->size++;
 }
 
-HuffmanNode *dequeue(PriorityQueue *pq)
-{
+HuffmanNode *dequeue(PriorityQueue *pq) {
     HuffmanNode *minNode = pq->nodes[0];
     pq->size--;
     HuffmanNode *lastNode = pq->nodes[pq->size];
     int i = 0;
-    while (2 * i + 1 < pq->size)
-    {
+    while (2 * i + 1 < pq->size) {
         int child = 2 * i + 1;
-        if (child + 1 < pq->size && pq->nodes[child + 1]->frequency < pq->nodes[child]->frequency)
-        {
+        if (child + 1 < pq->size && pq->nodes[child + 1]->frequency < pq->nodes[child]->frequency) {
             child++;
         }
-        if (lastNode->frequency <= pq->nodes[child]->frequency)
-        {
+        if (lastNode->frequency <= pq->nodes[child]->frequency) {
             break;
         }
         pq->nodes[i] = pq->nodes[child];
@@ -83,32 +74,17 @@ HuffmanNode *dequeue(PriorityQueue *pq)
     return minNode;
 }
 
-HuffmanNode *buildHuffmanTree(int *frequencies)
-{
+HuffmanNode *buildHuffmanTree(int *frequencies) {
     PriorityQueue pq;
     initPriorityQueue(&pq);
 
-    int symbol_count = 0;
-    for (int i = 0; i < 256; i++)
-    {
-        if (frequencies[i] > 0)
-        {
+    for (int i = 0; i < 256; i++) {
+        if (frequencies[i] > 0) {
             enqueue(&pq, createNode((unsigned char)i, frequencies[i]));
-            symbol_count++;
         }
     }
 
-    // Caso especial: solo un símbolo
-    if (symbol_count == 1)
-    {
-        HuffmanNode *only = dequeue(&pq);
-        HuffmanNode *root = createNode(0, only->frequency);
-        root->left = only;
-        return root;
-    }
-
-    while (pq.size > 1)
-    {
+    while (pq.size > 1) {
         HuffmanNode *left = dequeue(&pq);
         HuffmanNode *right = dequeue(&pq);
         HuffmanNode *parent = createNode(0, left->frequency + right->frequency);
@@ -120,111 +96,159 @@ HuffmanNode *buildHuffmanTree(int *frequencies)
     return pq.size > 0 ? dequeue(&pq) : NULL;
 }
 
-void generateCodes(HuffmanNode *root, char **codes, char *currentCode, int depth)
-{
-    if (!root || depth >= MAX_CODE_LENGTH - 1)
-        return;
+void saveCodesToFile(char **codes, FILE *output) {
+    for (int i = 0; i < 256; i++) {
+        if (codes[i] != NULL) {
+            fprintf(output, "%d:%s\n", i, codes[i]);
+        }
+    }
+}
 
-    if (!root->left && !root->right)
-    {
+void generateCodes(HuffmanNode *root, char **codes, char *currentCode, int depth) {
+    if (!root || depth >= MAX_CODE_LENGTH-1) return;
+
+    if (!root->left && !root->right) {
         currentCode[depth] = '\0';
         codes[root->symbol] = strdup(currentCode);
-        if (!codes[root->symbol])
-        {
+        if (!codes[root->symbol]) {
             perror("Error asignando código");
             exit(EXIT_FAILURE);
         }
         return;
     }
 
-    if (root->left)
-    {
+    if (root->left) {
         currentCode[depth] = '0';
-        generateCodes(root->left, codes, currentCode, depth + 1);
+        generateCodes(root->left, codes, currentCode, depth+1);
     }
-
-    if (root->right)
-    {
+    if (root->right) {
         currentCode[depth] = '1';
-        generateCodes(root->right, codes, currentCode, depth + 1);
+        generateCodes(root->right, codes, currentCode, depth+1);
     }
 }
 
-void freeHuffmanTree(HuffmanNode *root)
-{
-    if (!root)
-        return;
+void freeHuffmanTree(HuffmanNode *root) {
+    if (!root) return;
     freeHuffmanTree(root->left);
     freeHuffmanTree(root->right);
     free(root);
 }
 
-void calculateFrequencies(FILE *input, int *frequencies)
-{
-    unsigned char symbol;
-    while (fread(&symbol, sizeof(unsigned char), 1, input) == 1)
-    {
-        frequencies[symbol]++;
+// Codes loading
+void loadCodesFromFile(const char *filename, char **codes) {
+    FILE *fp = fopen(filename, "r");
+    if (!fp) {
+        perror("Error abriendo codes.txt");
+        exit(EXIT_FAILURE);
     }
-    rewind(input);
+    int symbol;
+    char code[MAX_CODE_LENGTH];
+    while (fscanf(fp, "%d:%s\n", &symbol, code) == 2) {
+        codes[symbol] = strdup(code);
+    }
+    fclose(fp);
 }
 
-void saveCodesToFile(char **codes, FILE *output)
-{
-    for (int i = 0; i < 256; i++)
-    {
-        if (codes[i] != NULL)
-        {
-            fprintf(output, "%d:%s\n", i, codes[i]);
+// Compression
+void writeBits(FILE *output, unsigned char *buffer, int *bitPos, const char *code) {
+    for (int i = 0; code[i]; i++) {
+        if (code[i] == '1') {
+            *buffer |= (1 << (7 - *bitPos));
+        }
+        (*bitPos)++;
+        if (*bitPos == 8) {
+            fwrite(buffer, 1, 1, output);
+            *buffer = 0;
+            *bitPos = 0;
         }
     }
 }
+void compressFileChild(const char *inputFilename, const char *outputFilename) {
+    char *codes[256] = {NULL};
+    loadCodesFromFile("codes.txt", codes);
 
-void validateCodes(char **codes, int *frequencies)
-{
-    for (int i = 0; i < 256; i++)
-    {
-        if (frequencies[i] > 0 && codes[i] == NULL)
-        {
-            fprintf(stderr, "Error crítico: Símbolo %d ('%c') tiene frecuencia %d pero no tiene código asignado\n",
-                    i, isprint(i) ? i : '.', frequencies[i]);
+    FILE *input = fopen(inputFilename, "rb");
+    FILE *output = fopen(outputFilename, "wb");
+    if (!input || !output) {
+        perror("Error abriendo archivos");
+        exit(EXIT_FAILURE);
+    }
+
+    unsigned char symbol;
+    unsigned char buffer = 0;
+    int bitPos = 0;
+
+    // Escribir FILE_SEP antes del contenido
+    for (int j = 0; DELIMITER[j]; j++) {
+        if (codes[(unsigned char)DELIMITER[j]]) {
+            writeBits(output, &buffer, &bitPos, codes[(unsigned char)DELIMITER[j]]);
+        } else {
+            fprintf(stderr, "[ERROR] No hay código para el caracter de delimitador '%c'\n", DELIMITER[j]);
+            fclose(input);
+            fclose(output);
             exit(EXIT_FAILURE);
         }
     }
+
+    // Comprimir el contenido normal
+    while (fread(&symbol, 1, 1, input) == 1) {
+        if (codes[symbol]) {
+            writeBits(output, &buffer, &bitPos, codes[symbol]);
+        } else {
+            fprintf(stderr, "[ERROR] Símbolo %d (%c) sin código\n", symbol, isprint(symbol) ? symbol : '.');
+            fclose(input);
+            fclose(output);
+            exit(EXIT_FAILURE);
+        }
+    }
+
+    // Si sobran bits, escribir el último byte
+    if (bitPos > 0) {
+        fwrite(&buffer, 1, 1, output);
+        buffer = 0;
+        bitPos = 0;
+    }
+
+    fclose(input);
+    fclose(output);
+
+    for (int i = 0; i < 256; i++) free(codes[i]);
 }
 
-void compressMultipleFiles(FILE *output, char **codes, char **filenames, int fileCount)
-{
-    unsigned char symbol;
-    for (int i = 0; i < fileCount; i++)
-    {
-        FILE *input = fopen(filenames[i], "rb");
-        if (!input)
-        {
-            fprintf(stderr, "Error al abrir %s\n", filenames[i]);
+
+// Merge
+void mergeTemporaryFiles(int fileCount) {
+    FILE *finalOutput = fopen("textoComprimido.bin", "wb");
+    if (!finalOutput) {
+        perror("Error creando archivo final");
+        exit(EXIT_FAILURE);
+    }
+
+    for (int i = 0; i < fileCount; i++) {
+        char tempFilename[64];
+        snprintf(tempFilename, sizeof(tempFilename), "tmp_out_%d.bin", i);
+
+        FILE *tempInput = fopen(tempFilename, "rb");
+        if (!tempInput) {
+            perror("Error abriendo archivo temporal");
             continue;
         }
 
-        fputs("FILE_SEP", output);
-
-        while (fread(&symbol, sizeof(unsigned char), 1, input) == 1)
-        {
-            if (codes[symbol])
-            {
-                fputs(codes[symbol], output);
-            }
-            else
-            {
-                fprintf(stderr, "Error: Símbolo %d no tiene código (archivo: %s)\n", symbol, filenames[i]);
-                exit(EXIT_FAILURE);
-            }
+        unsigned char buffer[1024];
+        size_t bytesRead;
+        while ((bytesRead = fread(buffer, 1, sizeof(buffer), tempInput)) > 0) {
+            fwrite(buffer, 1, bytesRead, finalOutput);
         }
-        fclose(input);
+
+        fclose(tempInput);
+        remove(tempFilename);
     }
+
+    fclose(finalOutput);
 }
 
-int main()
-{
+// Main
+int main() {
     DIR *dir;
     struct dirent *ent;
     char *filenames[MAX_FILES] = {NULL};
@@ -234,79 +258,54 @@ int main()
     snprintf(path, sizeof(path), "./%s", FOLDER_NAME);
 
     struct stat st;
-    if (stat(path, &st) != 0 || !S_ISDIR(st.st_mode))
-    {
+    if (stat(path, &st) != 0 || !S_ISDIR(st.st_mode)) {
         fprintf(stderr, "Error: Carpeta '%s' no encontrada\n", FOLDER_NAME);
         return 1;
     }
 
-    if (!(dir = opendir(path)))
-    {
+    if (!(dir = opendir(path))) {
         perror("Error abriendo directorio");
         return 1;
     }
 
-    while ((ent = readdir(dir)) && fileCount < MAX_FILES)
-    {
-        if (strstr(ent->d_name, ".txt"))
-        {
+    while ((ent = readdir(dir)) && fileCount < MAX_FILES) {
+        if (strstr(ent->d_name, ".txt")) {
             char fullpath[PATH_MAX];
             snprintf(fullpath, sizeof(fullpath), "%s/%s", path, ent->d_name);
-
-            FILE *test = fopen(fullpath, "rb");
-            if (test)
-            {
-                fclose(test);
-                filenames[fileCount] = strdup(fullpath);
-                if (!filenames[fileCount])
-                {
-                    perror("Error asignando memoria");
-                    closedir(dir);
-                    return 1;
-                }
-                fileCount++;
-            }
+            filenames[fileCount++] = strdup(fullpath);
         }
     }
     closedir(dir);
 
-    if (fileCount == 0)
-    {
+    if (fileCount == 0) {
         printf("No se encontraron archivos .txt en '%s'\n", FOLDER_NAME);
         return 0;
     }
 
-    printf("Archivos a comprimir:\n");
-    for (int i = 0; i < fileCount; i++)
-    {
-        printf("- %s\n", filenames[i]);
-    }
-
     int frequencies[256] = {0};
-    for (int i = 0; i < fileCount; i++)
-    {
+    for (int i = 0; i < fileCount; i++) {
         FILE *input = fopen(filenames[i], "rb");
-        if (input)
-        {
-            calculateFrequencies(input, frequencies);
+        if (input) {
+            unsigned char symbol;
+            while (fread(&symbol, sizeof(unsigned char), 1, input) == 1) {
+                frequencies[symbol]++;
+            }
             fclose(input);
         }
     }
-
-    // Verificar que hayamos leído caracteres
-    int total_chars = 0;
-    for (int i = 0; i < 256; i++)
-        total_chars += frequencies[i];
-    if (total_chars == 0)
-    {
-        fprintf(stderr, "Error: No se encontraron caracteres en los archivos de entrada\n");
-        return 1;
+    
+    // Agregar FILE_SEP forzado
+    for (int j = 0; DELIMITER[j]; j++) {
+        unsigned char ch = (unsigned char)DELIMITER[j];
+        if (frequencies[ch] == 0) {
+            frequencies[ch] = 1;
+        }
     }
 
+
     HuffmanNode *root = buildHuffmanTree(frequencies);
-    if (!root)
-    {
-        fprintf(stderr, "Error: No se pudo construir el árbol de Huffman\n");
+    if (!root) {
+        fprintf(stderr, "Error construyendo el árbol de Huffman\n");
         return 1;
     }
 
@@ -314,114 +313,40 @@ int main()
     char currentCode[MAX_CODE_LENGTH] = {0};
     generateCodes(root, codes, currentCode, 0);
 
-    // Validación crítica
-    validateCodes(codes, frequencies);
-
     FILE *codesFile = fopen("codes.txt", "w");
-    if (codesFile)
-    {
+    if (codesFile) {
         saveCodesToFile(codes, codesFile);
         fclose(codesFile);
     }
 
-    // Parallelize compression using fork
-    pid_t pids[MAX_FILES];
-    char tempFiles[MAX_FILES][64];
+    freeHuffmanTree(root);
+    for (int i = 0; i < 256; i++) free(codes[i]);
 
-    for (int i = 0; i < fileCount; i++)
-    {
-        snprintf(tempFiles[i], sizeof(tempFiles[i]), "temp_compressed_%d.txt", i);
-        pids[i] = fork();
-
-        if (pids[i] < 0)
-        {
+    // FORK: one child per file
+    for (int i = 0; i < fileCount; i++) {
+        pid_t pid = fork();
+        if (pid == 0) { // child
+            char tempFilename[64];
+            snprintf(tempFilename, sizeof(tempFilename), "tmp_out_%d.bin", i);
+            compressFileChild(filenames[i], tempFilename);
+            exit(0);
+        } else if (pid < 0) {
             perror("Error creando proceso hijo");
             exit(EXIT_FAILURE);
         }
-
-        if (pids[i] == 0)
-        {
-            // Child process
-            FILE *input = fopen(filenames[i], "rb");
-            FILE *out = fopen(tempFiles[i], "w");
-
-            if (!input || !out)
-            {
-                fprintf(stderr, "Error abriendo archivo en hijo (file: %s)\n", filenames[i]);
-                exit(EXIT_FAILURE);
-            }
-
-            fputs("FILE_SEP", out);
-
-            unsigned char symbol;
-            while (fread(&symbol, sizeof(unsigned char), 1, input) == 1)
-            {
-                if (codes[symbol])
-                {
-                    fputs(codes[symbol], out);
-                }
-                else
-                {
-                    fprintf(stderr, "Error: Símbolo %d sin código (archivo: %s)\n", symbol, filenames[i]);
-                    exit(EXIT_FAILURE);
-                }
-            }
-
-            fclose(input);
-            fclose(out);
-            exit(0); // Child exits
-        }
     }
 
-    // Parent process waits for all children
-    for (int i = 0; i < fileCount; i++)
-    {
-        waitpid(pids[i], NULL, 0);
+    // Parent: wait for all children
+    for (int i = 0; i < fileCount; i++) {
+        wait(NULL);
     }
 
-    // Concatenate all temporary outputs into final file
-    FILE *outputFile = fopen("textoComprimido.txt", "w");
-    if (outputFile)
-    {
-        for (int i = 0; i < fileCount; i++)
-        {
-            FILE *temp = fopen(tempFiles[i], "r");
-            if (temp)
-            {
-                char ch;
-                while ((ch = fgetc(temp)) != EOF)
-                {
-                    fputc(ch, outputFile);
-                }
-                fclose(temp);
-                remove(tempFiles[i]); // Clean up temp file
-            }
-        }
-        fclose(outputFile);
-    }
-    else
-    {
-        fprintf(stderr, "Error creando archivo comprimido\n");
-        for (int i = 0; i < fileCount; i++)
-        {
-            remove(tempFiles[i]); // Clean up temp files
-        }
-        return 1;
-    }
+    mergeTemporaryFiles(fileCount);
 
     printf("\nCompresión completada:\n");
     printf("- %d archivos comprimidos\n", fileCount);
 
-    // Liberar memoria
-    freeHuffmanTree(root);
-    for (int i = 0; i < 256; i++)
-    {
-        free(codes[i]);
-    }
-    for (int i = 0; i < fileCount; i++)
-    {
-        free(filenames[i]); // Solo liberar una vez
-    }
+    for (int i = 0; i < fileCount; i++) free(filenames[i]);
 
     return 0;
 }
