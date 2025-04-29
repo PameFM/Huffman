@@ -1,0 +1,32 @@
+ 
+# Nombre del compilador
+CC = gcc
+
+# Opciones de compilación
+CFLAGS = -Wall -Wextra -O2
+
+# Archivos fuente
+COMPRESS_SRC = compressFork.c
+DECOMPRESS_SRC = decompressFork.c
+
+# Binaries
+COMPRESS_BIN = compressFork
+DECOMPRESS_BIN = decompressFork
+
+# Regla principal
+all: $(COMPRESS_BIN) $(DECOMPRESS_BIN)
+
+# Compilar compressFork
+$(COMPRESS_BIN): $(COMPRESS_SRC)
+    $(CC) $(CFLAGS) -o $(COMPRESS_BIN) $(COMPRESS_SRC)
+
+# Compilar decompressFork
+$(DECOMPRESS_BIN): $(DECOMPRESS_SRC)
+    $(CC) $(CFLAGS) -o $(DECOMPRESS_BIN) $(DECOMPRESS_SRC)
+
+# Limpiar archivos generados
+clean:
+    rm -f $(COMPRESS_BIN) $(DECOMPRESS_BIN)
+
+# Forzar reglas para que no choque con archivos del mismo nombre
+.PHONY: all clean
