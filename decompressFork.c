@@ -90,10 +90,8 @@ int main() {
     fseek(input, 0, SEEK_END);
     long fileSize = ftell(input);
     rewind(input);
-    
-    //Tiempos
-    struct timespec inicio, fin;
 
+    struct timespec inicio, fin;
     clock_gettime(CLOCK_REALTIME, &inicio);
 
     unsigned char *compressedData = malloc(fileSize);
@@ -106,7 +104,8 @@ int main() {
     }
 
     HuffmanNode *current = tree;
-    char outputBuffer[MAX_SYMBOLS];
+    int bufferCapacity = 4096;
+    char *outputBuffer = malloc(bufferCapacity);
     int outputBufferPos = 0;
     char lookaheadBuffer[64] = {0};
     int lookaheadSize = 0;
@@ -133,10 +132,9 @@ int main() {
 
             if (lookaheadSize >= delimiterLength && bufferMatchesDelimiter(&lookaheadBuffer[sizeof(lookaheadBuffer) - delimiterLength])) {
                 if (!started) {
-                    started = true; // Primer delimitador, no guardar
+                    started = true;
                 } else {
                     if (outputBufferPos > 0) {
-                        // Copiar contenido seguro
                         int dataSize = outputBufferPos;
                         char *dataCopy = malloc(dataSize);
                         memcpy(dataCopy, outputBuffer, dataSize);
@@ -144,14 +142,15 @@ int main() {
                         int thisFileIndex = ++fileIndex;
 
                         pid_t pid = fork();
-                        if (pid == 0) { // hijo
+                        if (pid == 0) {
                             writeFile(thisFileIndex, dataCopy, dataSize);
                             free(dataCopy);
+                            free(outputBuffer);
                             free(compressedData);
                             freeHuffmanTree(tree);
                             exit(0);
                         }
-                        free(dataCopy); // padre libera
+                        free(dataCopy);
                     }
                 }
                 outputBufferPos = 0;
@@ -164,11 +163,15 @@ int main() {
 
             if (started) {
                 if (lookaheadSize > delimiterLength) {
-                    outputBuffer[outputBufferPos++] = lookaheadBuffer[sizeof(lookaheadBuffer) - delimiterLength - 1];
-                    if (outputBufferPos >= MAX_SYMBOLS) {
-                        fprintf(stderr, "Error: Buffer overflow\n");
-                        exit(EXIT_FAILURE);
+                    if (outputBufferPos >= bufferCapacity) {
+                        bufferCapacity *= 2;
+                        outputBuffer = realloc(outputBuffer, bufferCapacity);
+                        if (!outputBuffer) {
+                            perror("Error realocando memoria");
+                            exit(EXIT_FAILURE);
+                        }
                     }
+                    outputBuffer[outputBufferPos++] = lookaheadBuffer[sizeof(lookaheadBuffer) - delimiterLength - 1];
                 }
             }
 
@@ -178,7 +181,7 @@ int main() {
         bitPos++;
     }
 
-    // Guardar último archivo
+    // Guardar el último archivo
     if (outputBufferPos > 0) {
         int dataSize = outputBufferPos;
         char *dataCopy = malloc(dataSize);
@@ -190,6 +193,7 @@ int main() {
         if (pid == 0) {
             writeFile(thisFileIndex, dataCopy, dataSize);
             free(dataCopy);
+            free(outputBuffer);
             free(compressedData);
             freeHuffmanTree(tree);
             exit(0);
@@ -201,19 +205,16 @@ int main() {
 
     printf("Descompresión completada: %d archivos.\n", fileIndex);
 
+    free(outputBuffer);
     free(compressedData);
     freeHuffmanTree(tree);
-    
+
     clock_gettime(CLOCK_REALTIME, &fin);
 
-    // 3. Calcular la diferencia en segundos y nanosegundos
     long diferencia_segundos = fin.tv_sec - inicio.tv_sec;
     long diferencia_nanosegundos = fin.tv_nsec - inicio.tv_nsec;
-
-    // 4. Convertir todo a nanosegundos (1 segundo = 1,000,000,000 ns)
     double tiempo_total_ns = (diferencia_segundos * 1e9) + diferencia_nanosegundos;
 
-    // Mostrar resultados
     printf("Tiempo total: %.0f nanosegundos\n", tiempo_total_ns);
     printf("Equivale a:\n");
     printf("- %.9f segundos\n", tiempo_total_ns / 1e9);
