@@ -127,17 +127,25 @@ int main() {
 
             if (lookaheadSize >= delimiterLength && bufferMatchesDelimiter(&lookaheadBuffer[sizeof(lookaheadBuffer) - delimiterLength])) {
                 if (!started) {
-                    started = true; // Primer delimitador
+                    started = true; // Primer delimitador, no guardar
                 } else {
-                    // Lanzar fork para escribir archivo
                     if (outputBufferPos > 0) {
+                        // Copiar contenido seguro
+                        int dataSize = outputBufferPos;
+                        char *dataCopy = malloc(dataSize);
+                        memcpy(dataCopy, outputBuffer, dataSize);
+
+                        int thisFileIndex = ++fileIndex;
+
                         pid_t pid = fork();
                         if (pid == 0) { // hijo
-                            writeFile(++fileIndex, outputBuffer, outputBufferPos);
+                            writeFile(thisFileIndex, dataCopy, dataSize);
+                            free(dataCopy);
                             free(compressedData);
                             freeHuffmanTree(tree);
                             exit(0);
                         }
+                        free(dataCopy); // padre libera
                     }
                 }
                 outputBufferPos = 0;
@@ -164,18 +172,25 @@ int main() {
         bitPos++;
     }
 
-    // Guardar último archivo si queda contenido
+    // Guardar último archivo
     if (outputBufferPos > 0) {
+        int dataSize = outputBufferPos;
+        char *dataCopy = malloc(dataSize);
+        memcpy(dataCopy, outputBuffer, dataSize);
+
+        int thisFileIndex = ++fileIndex;
+
         pid_t pid = fork();
         if (pid == 0) {
-            writeFile(++fileIndex, outputBuffer, outputBufferPos);
+            writeFile(thisFileIndex, dataCopy, dataSize);
+            free(dataCopy);
             free(compressedData);
             freeHuffmanTree(tree);
             exit(0);
         }
+        free(dataCopy);
     }
 
-    // Esperar a todos los hijos
     while (wait(NULL) > 0);
 
     printf("Descompresión completada: %d archivos.\n", fileIndex);
